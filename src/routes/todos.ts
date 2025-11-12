@@ -1,21 +1,28 @@
 import { Router, Request, Response } from 'express';
 import { RepositoryFactory } from '../repositories/RepositoryFactory';
+import { validateBody, validateParams, validateQuery } from '../middleware/validate';
 import {
-  validateBody,
-  validateParams,
-  validateQuery,
-} from '../middleware/validate';
-import {
-  createTodoSchema,
-  updateTodoSchema,
-  paginationSchema,
-  idParamSchema,
-} from '../schemas/todo.schema';
+  CreateTodoInputSchema,
+  UpdateTodoInputSchema,
+  TodoQueryParamsSchema,
+} from '../shared/index.js';
+import { z } from 'zod';
+import { authenticate } from '../middleware/auth.middleware.js';
+import { requireAnyRole } from '../middleware/rbac.middleware.js';
+
+// ID param schema for route validation
+const idParamSchema = z.object({
+  id: z.string().min(1, 'ID is required'),
+});
 
 const router = Router();
 
 // Get the todo repository instance
 const todoRepository = RepositoryFactory.getTodoRepository();
+
+// Apply authentication and RBAC to all todo routes
+// Both STARTER and PRO users can access REST API
+router.use(authenticate, requireAnyRole);
 
 /**
  * @swagger
@@ -45,32 +52,28 @@ const todoRepository = RepositoryFactory.getTodoRepository();
  *               $ref: '#/components/schemas/PaginatedTodos'
  */
 // Get all todos with optional pagination
-router.get(
-  '/',
-  validateQuery(paginationSchema),
-  async (req: Request, res: Response) => {
-    const { page = 1, limit = 10 } = req.query as {
-      page?: number;
-      limit?: number;
-    };
-    const skip = (page - 1) * limit;
+router.get('/', validateQuery(TodoQueryParamsSchema), async (req: Request, res: Response) => {
+  const { page = 1, limit = 10 } = req.query as {
+    page?: number;
+    limit?: number;
+  };
+  const skip = (page - 1) * limit;
 
-    const [todos, total] = await Promise.all([
-      todoRepository.findAll({ skip, take: limit }),
-      todoRepository.count(),
-    ]);
+  const [todos, total] = await Promise.all([
+    todoRepository.findAll({ skip, take: limit }),
+    todoRepository.count(),
+  ]);
 
-    res.json({
-      data: todos,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  }
-);
+  res.json({
+    data: todos,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
+});
 
 /**
  * @swagger
@@ -100,20 +103,16 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  */
 // Get a single todo by id
-router.get(
-  '/:id',
-  validateParams(idParamSchema),
-  async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const todo = await todoRepository.findById(id);
+router.get('/:id', validateParams(idParamSchema), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const todo = await todoRepository.findById(id);
 
-    if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-
-    res.json(todo);
+  if (!todo) {
+    return res.status(404).json({ error: 'Todo not found' });
   }
-);
+
+  res.json(todo);
+});
 
 /**
  * @swagger
@@ -142,19 +141,15 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  */
 // Create a new todo
-router.post(
-  '/',
-  validateBody(createTodoSchema),
-  async (req: Request, res: Response) => {
-    const { title, completed = false } = req.body;
-    const todo = await todoRepository.create({
-      title,
-      completed,
-    });
+router.post('/', validateBody(CreateTodoInputSchema), async (req: Request, res: Response) => {
+  const { title, completed = false } = req.body;
+  const todo = await todoRepository.create({
+    title,
+    completed,
+  });
 
-    res.status(201).json(todo);
-  }
-);
+  res.status(201).json(todo);
+});
 
 /**
  * @swagger
@@ -193,7 +188,7 @@ router.post(
 router.put(
   '/:id',
   validateParams(idParamSchema),
-  validateBody(updateTodoSchema),
+  validateBody(UpdateTodoInputSchema),
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const { title, completed } = req.body;
@@ -235,19 +230,15 @@ router.put(
  *               $ref: '#/components/schemas/Error'
  */
 // Delete a todo
-router.delete(
-  '/:id',
-  validateParams(idParamSchema),
-  async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const deleted = await todoRepository.delete(id);
+router.delete('/:id', validateParams(idParamSchema), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const deleted = await todoRepository.delete(id);
 
-    if (!deleted) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-
-    res.status(204).end();
+  if (!deleted) {
+    return res.status(404).json({ error: 'Todo not found' });
   }
-);
+
+  res.status(204).end();
+});
 
 export default router;

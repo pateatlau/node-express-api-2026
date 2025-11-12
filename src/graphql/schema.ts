@@ -6,6 +6,24 @@ import gql from 'graphql-tag';
  */
 export const typeDefs = gql`
   """
+  Directive to require authentication
+  """
+  directive @requireAuth on FIELD_DEFINITION
+
+  """
+  Directive to require specific role
+  """
+  directive @requireRole(role: Role!) on FIELD_DEFINITION
+
+  """
+  User roles for access control
+  """
+  enum Role {
+    STARTER
+    PRO
+  }
+
+  """
   Todo item representing a task
   """
   type Todo {

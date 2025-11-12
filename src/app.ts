@@ -1,8 +1,10 @@
 import 'express-async-errors';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import todosRouter from './routes/todos';
+import authRouter from './routes/auth.routes';
 import { errorHandler } from './middleware/errorHandler';
 import prisma from './lib/prisma';
 import { swaggerSpec } from './config/swagger';
@@ -43,6 +45,7 @@ app.use(morgan('combined', { stream: morganStream }));
 // Body parsing and compression
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); // Parse cookies for refresh tokens
 app.use(compressionMiddleware);
 
 // Health check endpoint
@@ -97,8 +100,9 @@ app.get('/', (req: Request, res: Response) => {
 
 // Conditionally mount REST routes
 if (isRestEnabled()) {
+  app.use('/api/auth', authRouter); // Auth routes
   app.use('/api/todos', todosRouter);
-  logger.info('REST API enabled', { endpoint: '/api/todos' });
+  logger.info('REST API enabled', { endpoints: ['/api/auth', '/api/todos'] });
 }
 
 // Note: GraphQL routes are mounted in index.ts after HTTP server creation

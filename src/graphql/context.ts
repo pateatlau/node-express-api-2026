@@ -4,6 +4,17 @@ import { RepositoryFactory } from '../repositories/RepositoryFactory.js';
 import { createTodoDataLoader, type TodoDataLoader } from './dataloader.js';
 import { pubsub } from './pubsub.js';
 import type { PubSub } from 'graphql-subscriptions';
+import type { AuthRequest } from '../types/auth.types.js';
+import { Role } from '@prisma/client';
+
+/**
+ * User information from JWT token
+ */
+export interface ContextUser {
+  userId: string;
+  email: string;
+  role: Role;
+}
 
 /**
  * GraphQL Context Interface
@@ -14,6 +25,8 @@ export interface GraphQLContext {
   req?: Request;
   /** Express response object */
   res?: Response;
+  /** Authenticated user (if present) */
+  user?: ContextUser;
   /** Todo repository (database abstraction) */
   todoRepository: ITodoRepository;
   /** DataLoader for batching and caching */
@@ -40,9 +53,14 @@ export async function createGraphQLContext({
   // This ensures caching is scoped to a single request
   const todoLoader = createTodoDataLoader(todoRepository);
 
+  // Extract user from request if authenticated (from auth middleware)
+  const authReq = req as AuthRequest;
+  const user = authReq?.user;
+
   return {
     req,
     res,
+    user,
     todoRepository,
     todoLoader,
     pubsub,
@@ -53,9 +71,7 @@ export async function createGraphQLContext({
  * Context for WebSocket connections (subscriptions)
  * Simpler context since there's no HTTP request/response
  */
-export async function createSubscriptionContext(): Promise<
-  Omit<GraphQLContext, 'req' | 'res'>
-> {
+export async function createSubscriptionContext(): Promise<Omit<GraphQLContext, 'req' | 'res'>> {
   const todoRepository = RepositoryFactory.getTodoRepository();
   const todoLoader = createTodoDataLoader(todoRepository);
 

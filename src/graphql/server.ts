@@ -12,6 +12,9 @@ import { typeDefs } from './schema.js';
 import { resolvers } from './resolvers/todo.resolvers.js';
 import { createGraphQLContext, createSubscriptionContext } from './context.js';
 import type { GraphQLContext } from './context.js';
+import { applyAuthDirectives } from './directives.js';
+import { authenticate } from '../middleware/auth.middleware.js';
+import { requireProRole } from '../middleware/rbac.middleware.js';
 import logger from '../config/logger';
 
 /**
@@ -27,6 +30,9 @@ export async function setupGraphQLServer(
     resolvers,
   });
 
+  // Apply authorization directives
+  const schemaWithDirectives = applyAuthDirectives(schema);
+
   // Setup WebSocket server for subscriptions
   const wsServer = new WebSocketServer({
     server: httpServer,
@@ -36,7 +42,7 @@ export async function setupGraphQLServer(
   // Setup subscription handlers
   const serverCleanup = useServer(
     {
-      schema,
+      schema: schemaWithDirectives,
       context: async () => {
         return createSubscriptionContext();
       },
@@ -52,7 +58,7 @@ export async function setupGraphQLServer(
 
   // Create Apollo Server
   const apolloServer = new ApolloServer<GraphQLContext>({
-    schema,
+    schema: schemaWithDirectives,
     plugins: [
       // Proper shutdown for HTTP server
       ApolloServerPluginDrainHttpServer({ httpServer }),
@@ -80,6 +86,8 @@ export async function setupGraphQLServer(
   app.use(
     '/graphql',
     json(),
+    authenticate, // Require authentication
+    requireProRole, // Require PRO role for GraphQL access
     expressMiddleware(apolloServer, {
       context: async ({ req, res }) => {
         return createGraphQLContext({ req, res });

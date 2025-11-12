@@ -4,11 +4,13 @@ import app from './app';
 import { DatabaseConnection } from './config/database';
 import { isGraphQLEnabled } from './config/apiType';
 import { setupGraphQLServer } from './graphql';
+import { initializeWebSocket } from './websocket/index.js';
+import { startSessionCleanup } from './cron/sessionCleanup.js';
 import logger from './config/logger';
 
 const PORT = env.PORT;
 
-// Create HTTP server (needed for GraphQL WebSocket support)
+// Create HTTP server (needed for GraphQL WebSocket support and Socket.io)
 const httpServer = createServer(app);
 
 // Handle graceful shutdown
@@ -36,6 +38,17 @@ const startServer = async () => {
       logger.info('GraphQL API enabled', { endpoint: '/graphql' });
     }
 
+    // Initialize WebSocket server
+    const io = initializeWebSocket(httpServer);
+
+    // Make io instance available to routes
+    app.set('io', io);
+
+    logger.info('WebSocket server initialized');
+
+    // Start session cleanup cron job
+    startSessionCleanup(io);
+
     // Start HTTP server
     httpServer.listen(PORT, () => {
       logger.info('Server started successfully', {
@@ -43,6 +56,7 @@ const startServer = async () => {
         databaseType: DatabaseConnection.getType(),
         apiType: env.API_TYPE,
         nodeEnv: env.NODE_ENV,
+        websocket: 'enabled',
       });
     });
   } catch (error) {

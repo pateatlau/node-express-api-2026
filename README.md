@@ -8,6 +8,17 @@ A production-ready Node.js + Express + TypeScript backend API with PostgreSQL, P
 
 ## Features
 
+### Authentication & Security
+
+- **JWT Authentication** - Access tokens (15 min) + Refresh tokens (7 days)
+- **Role-Based Access Control (RBAC)** - STARTER and PRO user roles
+- **Session Management** - 5-minute inactivity timeout with automatic logout
+- **Cross-Device Sync** - Real-time session tracking and remote device logout via WebSocket
+- **Password Security** - bcrypt hashing with configurable rounds
+- **Protected Endpoints** - Authentication middleware for secure routes
+- **HttpOnly Cookies** - Secure refresh token storage
+- **GraphQL Protection** - PRO-only access with field-level directives
+
 ### Core Stack
 
 - **Node.js 18+ with Express 4.18** - RESTful and GraphQL API framework
@@ -22,9 +33,11 @@ A production-ready Node.js + Express + TypeScript backend API with PostgreSQL, P
 
 ### Security & Performance
 
+- **Authentication** - JWT with access/refresh tokens and session management
+- **Authorization** - Role-based access control (RBAC) for STARTER/PRO users
 - **Helmet** - Secure HTTP headers (CSP, HSTS, XSS protection)
 - **CORS** - Configurable cross-origin resource sharing
-- **Rate Limiting** - 100 requests per 15 minutes per IP
+- **Rate Limiting** - 500 requests per 15 minutes per IP (auth: 5 req/15min)
 - **Compression** - Gzip response compression
 - **Input Validation** - Comprehensive request validation with Zod
 
@@ -66,6 +79,125 @@ API_TYPE=both      # Both REST and GraphQL (default)
 API_TYPE=rest      # REST API only
 API_TYPE=graphql   # GraphQL API only
 ```
+
+---
+
+## Authentication & Authorization
+
+### Overview
+
+The application includes a complete authentication system with:
+
+- User signup and login with email/password
+- JWT-based authentication (access + refresh tokens)
+- Role-based access control (STARTER vs PRO users)
+- Automatic session timeout after 5 minutes of inactivity
+- Secure token storage and rotation
+
+### User Roles
+
+| Role        | REST API Access | GraphQL API Access | Description                        |
+| ----------- | --------------- | ------------------ | ---------------------------------- |
+| **STARTER** | ✅ Full Access  | ❌ No Access       | Free tier with REST API only       |
+| **PRO**     | ✅ Full Access  | ✅ Full Access     | Premium tier with GraphQL features |
+
+### Authentication Endpoints
+
+| Method | Endpoint            | Auth Required | Description                      |
+| ------ | ------------------- | ------------- | -------------------------------- |
+| POST   | `/api/auth/signup`  | ❌            | Create new account (choose role) |
+| POST   | `/api/auth/login`   | ❌            | Login with email/password        |
+| POST   | `/api/auth/logout`  | ❌            | Clear refresh token cookie       |
+| POST   | `/api/auth/refresh` | Cookie        | Get new access token             |
+| GET    | `/api/auth/me`      | ✅            | Get current user info            |
+| GET    | `/api/auth/session` | ✅            | Get session status and timeout   |
+
+### Quick Start: Create Test Users
+
+```bash
+# Using curl or REST client (Postman, Insomnia, etc.)
+
+# Create STARTER user
+curl -X POST http://localhost:4000/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test Starter",
+    "email": "starter@test.com",
+    "password": "SecurePass123!",
+    "role": "STARTER"
+  }'
+
+# Create PRO user
+curl -X POST http://localhost:4000/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test Pro",
+    "email": "pro@test.com",
+    "password": "SecurePass123!",
+    "role": "PRO"
+  }'
+```
+
+### Authentication Flow
+
+1. **Signup/Login** → Receive `accessToken` and `refreshToken` (cookie)
+2. **Authenticated Requests** → Include `Authorization: Bearer <accessToken>` header
+3. **Token Expires** (15 min) → Frontend auto-refreshes using `/api/auth/refresh`
+4. **Session Timeout** (5 min inactivity) → User automatically logged out
+5. **Logout** → Clear tokens and redirect to login
+
+### Protected Routes Example
+
+```typescript
+// Require authentication
+router.get('/api/todos', authenticate, getTodos);
+
+// Require specific role
+router.get('/api/todos', authenticate, requireRole(['PRO']), getTodos);
+
+// GraphQL - Entire endpoint requires PRO role
+app.use('/graphql', authenticate, requireProRole, expressMiddleware(apolloServer));
+```
+
+### Session Management
+
+- **Timeout**: 5 minutes of inactivity (configurable via `SESSION_TIMEOUT_MINUTES`)
+- **Warning**: Users receive warning at 1 minute remaining
+- **Activity Tracking**: Mouse movement, clicks, keyboard input reset the timer
+- **Auto-Logout**: Automatic logout and redirect after timeout
+
+### Token Details
+
+**Access Token**:
+
+- Lifetime: 15 minutes
+- Storage: `localStorage` (frontend)
+- Purpose: Authenticate API requests
+
+**Refresh Token**:
+
+- Lifetime: 7 days
+- Storage: HttpOnly cookie (secure, not accessible to JavaScript)
+- Purpose: Obtain new access tokens
+
+### Rate Limiting
+
+| Endpoint Type       | Limit        | Window     |
+| ------------------- | ------------ | ---------- |
+| General API         | 500 requests | 15 minutes |
+| Auth (login/signup) | 5 requests   | 15 minutes |
+| GraphQL             | 50 requests  | 15 minutes |
+| Mutations           | 20 requests  | 15 minutes |
+
+### Documentation
+
+For complete authentication documentation:
+
+- **API Reference**: [docs/API.md](./docs/API.md)
+- **Cross-Device Sync**: [docs/CROSS_DEVICE_SYNC.md](./docs/CROSS_DEVICE_SYNC.md) ⭐ New!
+- **Troubleshooting**: [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)
+- **Testing Guide**: [docs/TESTING.md](./docs/TESTING.md)
+- **Deployment**: [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)
 
 ---
 
