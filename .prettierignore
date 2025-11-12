@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.log
+logs/
+.env
+.env.*
+coverage/
+.nyc_output/
+prisma/migrations/
+*.db
+*.sqlite
+src/generated/
+*.tsbuildinfo
+package-lock.json

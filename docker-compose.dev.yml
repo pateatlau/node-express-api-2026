@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo-postgres-dev
+    # Run as postgres user (non-root)
+    user: postgres
+    environment:
+      - POSTGRES_USER=todouser
+      - POSTGRES_PASSWORD=todopassword
+      - POSTGRES_DB=tododb
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U todouser -d tododb']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongo-dev:
+    image: mongo:7.0
+    container_name: todo-mongo-dev
+    # Run as mongodb user (non-root)
+    user: mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=todouser
+      - MONGO_INITDB_ROOT_PASSWORD=todopassword
+      - MONGO_INITDB_DATABASE=tododb
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  todo-api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - '4000:4000'
+      - '5555:5555'
+      - '9229:9229'
+    # Run as non-root user
+    user: '1001:1001'
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./tsconfig.json:/app/tsconfig.json
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DB_TYPE=mongodb
+      - API_TYPE=both
+      - LOG_LEVEL=debug
+      - DATABASE_URL=postgresql://todouser:todopassword@postgres:5432/tododb
+      - MONGODB_URL=mongodb://todouser:todopassword@mongo-dev:27017/tododb?authSource=admin
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=1000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo-dev:
+        condition: service_healthy
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
+  mongo_data:

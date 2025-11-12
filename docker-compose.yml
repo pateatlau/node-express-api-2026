@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  todo-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '4000:4000'
+    # Run as non-root user
+    user: '1001:1001'
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - API_TYPE=both
+      - DB_TYPE=${DB_TYPE:-postgres}
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGODB_URL=${MONGODB_URL}
+    restart: unless-stopped
