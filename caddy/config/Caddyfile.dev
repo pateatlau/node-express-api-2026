@@ -1,0 +1,212 @@
+# Development Caddyfile (HTTP only, no SSL)
+# Usage: docker run -v ./caddy/config/Caddyfile.dev:/etc/caddy/Caddyfile caddy:2.7-alpine
+
+{
+    # Global options
+    admin localhost:2019
+    
+    # Disable automatic HTTPS in development
+    auto_https off
+    
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10MB
+            roll_keep 10
+        }
+        format json
+        level INFO
+    }
+}
+
+# Development domain (localhost on port 8080)
+# Access your API at: http://localhost:8080
+http://localhost:8080 {
+    
+    # Request logging for this site
+    log {
+        output file /var/log/caddy/localhost.log {
+            roll_size 10MB
+            roll_keep 10
+        }
+        format json
+    }
+
+    # ============================================
+    # Caddy Health Check (for monitoring Caddy itself)
+    # ============================================
+    handle /caddy-health {
+        respond "Caddy is healthy" 200
+    }
+
+    # ============================================
+    # Backend Health Check (no caching, no sticky sessions)
+    # ============================================
+    handle /health {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # Use least connections for health checks
+            lb_policy least_conn
+            
+            # Health check configuration
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+            health_status 200
+            
+            # Fail fast
+            fail_duration 30s
+            max_fails 3
+        }
+    }
+
+    # ============================================
+    # WebSocket Endpoint (Socket.io)
+    # IMPORTANT: Must use ip_hash for sticky sessions!
+    # ============================================
+    handle /socket.io/* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # Sticky sessions - same client always goes to same backend
+            lb_policy ip_hash
+            
+            # Health checks
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+            health_status 200
+            
+            # WebSocket-specific headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            
+            # Connection upgrade headers (required for WebSocket)
+            header_up Connection {http.request.header.Connection}
+            header_up Upgrade {http.request.header.Upgrade}
+        }
+    }
+
+    # ============================================
+    # REST API Endpoints (with caching for GET requests)
+    # ============================================
+    handle /api/* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # Load balancing strategy
+            lb_policy least_conn
+            
+            # Health checks
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+            health_status 200
+            
+            # Fail fast
+            fail_duration 30s
+            max_fails 3
+            
+            # Proxy headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Port {server_port}
+        }
+    }
+
+    # ============================================
+    # GraphQL Endpoint (minimal caching for queries)
+    # ============================================
+    handle /graphql* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # Load balancing strategy
+            lb_policy least_conn
+            
+            # Health checks
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+            health_status 200
+            
+            # Fail fast
+            fail_duration 30s
+            max_fails 3
+            
+            # Proxy headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # ============================================
+    # API Documentation (Swagger)
+    # ============================================
+    handle /api-docs* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            lb_policy least_conn
+            health_uri /health
+            
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # ============================================
+    # Catch-all for other routes
+    # ============================================
+    handle {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            lb_policy least_conn
+            health_uri /health
+            
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # ============================================
+    # Response Modifications
+    # ============================================
+    
+    # Enable gzip compression
+    encode gzip
+
+    # Security headers (basic for development)
+    header {
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        
+        # XSS protection
+        X-XSS-Protection "1; mode=block"
+        
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Remove server header (don't expose backend info)
+        -Server
+        
+        # Add cache status header for debugging
+        X-Proxy "Caddy"
+    }
+}

@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import todosRouter from './routes/todos';
 import authRouter from './routes/auth.routes';
+import metricsRouter from './routes/metrics.routes';
 import { errorHandler } from './middleware/errorHandler';
 import prisma from './lib/prisma';
 import { swaggerSpec } from './config/swagger';
@@ -16,9 +17,18 @@ import morgan from 'morgan';
 import { securityMiddleware, corsConfig, additionalSecurityHeaders } from './middleware/security';
 import { compressionMiddleware } from './middleware/compression';
 import { apiLimiter, graphqlLimiter } from './middleware/rateLimiter';
+import { metricsMiddleware } from './middleware/metrics.middleware';
 import { initSentry } from './config/sentry';
+import { env, isProduction } from './config/env';
 
 const app = express();
+
+// Trust proxy - Required for reverse proxy (Caddy, Nginx, etc.)
+// This ensures req.ip and X-Forwarded-* headers are read correctly
+if (isProduction() || env.TRUSTED_PROXY) {
+  app.set('trust proxy', true);
+  logger.info('Trust proxy enabled', { proxy: env.TRUSTED_PROXY || 'default' });
+}
 
 // Initialize Sentry (must be first) - optional if packages not installed
 try {
@@ -42,6 +52,9 @@ if (isGraphQLEnabled()) {
 // Logging - use winston stream for morgan
 app.use(morgan('combined', { stream: morganStream }));
 
+// Metrics tracking middleware (before body parsing)
+app.use(metricsMiddleware);
+
 // Body parsing and compression
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -52,11 +65,24 @@ app.use(compressionMiddleware);
 app.get('/health', async (req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', database: 'connected' });
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      instance_id: env.INSTANCE_ID,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
   } catch {
-    res.status(503).json({ status: 'error', database: 'disconnected' });
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      instance_id: env.INSTANCE_ID,
+    });
   }
 });
+
+// Prometheus metrics endpoint (before other routes to avoid rate limiting)
+app.use('/metrics', metricsRouter);
 
 /**
  * @swagger

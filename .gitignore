@@ -5,3 +5,9 @@ logs/
 .env
 
 /src/generated/prisma
+
+# Caddy
+caddy/data/
+caddy/logs/
+caddy/*.log
+.env.caddy

@@ -5,7 +5,9 @@
 
 import { PrismaClient, Session } from '@prisma/client';
 import crypto from 'crypto';
+import { Server } from 'socket.io';
 import logger from '../config/logger.js';
+import { broadcastSessionUpdate } from '../websocket/index.js';
 
 const prisma = new PrismaClient();
 
@@ -51,7 +53,8 @@ export async function createSession(
   userId: string,
   deviceInfo: DeviceInfo,
   ipAddress?: string,
-  accessToken?: string
+  accessToken?: string,
+  io?: Server
 ): Promise<Session> {
   const sessionToken = accessToken || generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
@@ -87,6 +90,11 @@ export async function createSession(
     },
   });
 
+  // Broadcast session update to all user's devices
+  if (io) {
+    broadcastSessionUpdate(io, userId);
+  }
+
   return session;
 }
 
@@ -121,11 +129,17 @@ export async function getActiveSessions(
 /**
  * Terminate a specific session by ID
  */
-export async function terminateSession(sessionId: string): Promise<Session | null> {
+export async function terminateSession(sessionId: string, io?: Server): Promise<Session | null> {
   try {
     const session = await prisma.session.delete({
       where: { id: sessionId },
     });
+
+    // Broadcast session update to all user's devices
+    if (io && session) {
+      broadcastSessionUpdate(io, session.userId);
+    }
+
     return session;
   } catch (error) {
     logger.error('Failed to terminate session', { error, sessionId });
@@ -138,7 +152,8 @@ export async function terminateSession(sessionId: string): Promise<Session | nul
  */
 export async function terminateAllSessions(
   userId: string,
-  exceptSessionToken?: string
+  exceptSessionToken?: string,
+  io?: Server
 ): Promise<number> {
   const result = await prisma.session.deleteMany({
     where: {
@@ -150,6 +165,11 @@ export async function terminateAllSessions(
       }),
     },
   });
+
+  // Broadcast session update to all user's devices
+  if (io && result.count > 0) {
+    broadcastSessionUpdate(io, userId);
+  }
 
   return result.count;
 }

@@ -12,9 +12,10 @@ done
 
 echo "✅ MongoDB is ready!"
 
+# Skip MongoDB initialization for Phase 5
 # Initialize database (seed only if empty)
-echo "🌱 Initializing database..."
-npm run mongo:init
+# echo "🌱 Initializing database..."
+# npx tsx scripts/init-mongodb.ts
 
 # Start the development server
 echo "🎬 Starting development server with hot reload..."

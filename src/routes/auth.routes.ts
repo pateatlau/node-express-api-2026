@@ -49,8 +49,11 @@ router.post('/signup', authLimiter, async (req: Request, res: Response): Promise
     // Get device info from request
     const deviceInfo = getDeviceInfoFromRequest(req);
 
+    // Get Socket.io instance
+    const io = req.app.get('io');
+
     // Create session record
-    await createSession(result.user.id, deviceInfo, req.ip, tokens.accessToken);
+    await createSession(result.user.id, deviceInfo, req.ip, tokens.accessToken, io);
 
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', tokens.refreshToken, {
@@ -111,15 +114,18 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
     // Get device info from request
     const deviceInfo = getDeviceInfoFromRequest(req);
 
-    // Create session record
-    const newSession = await createSession(result.user.id, deviceInfo, req.ip, tokens.accessToken);
-    console.log('[LOGIN] New session created:', newSession.id, 'for user:', result.user.id);
+    // Get Socket.io instance
+    const io = req.app.get('io');
 
-    // Broadcast session update to all user's devices
-    const io = req.app.get('io') as Server;
-    if (io) {
-      broadcastSessionUpdate(io, result.user.id);
-    }
+    // Create session record
+    const newSession = await createSession(
+      result.user.id,
+      deviceInfo,
+      req.ip,
+      tokens.accessToken,
+      io
+    );
+    console.log('[LOGIN] New session created:', newSession.id, 'for user:', result.user.id);
 
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', tokens.refreshToken, {
@@ -169,6 +175,9 @@ router.post(
       const authHeader = req.headers.authorization;
       console.log('[LOGOUT] Request received');
 
+      // Get Socket.io instance
+      const io = req.app.get('io');
+
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const sessionToken = authHeader.substring(7); // Remove 'Bearer ' prefix
         console.log('[LOGOUT] Session token:', sessionToken.substring(0, 20) + '...');
@@ -178,7 +187,7 @@ router.post(
         console.log('[LOGOUT] Session found:', session ? session.id : 'NOT FOUND');
 
         if (session) {
-          await terminateSession(session.id);
+          await terminateSession(session.id, io);
           console.log(`[LOGOUT] Session deleted successfully: ${session.id}`);
         } else {
           console.log('[LOGOUT] No session found to delete');
@@ -333,6 +342,7 @@ router.get('/session', authenticate, async (req: Request, res: Response): Promis
  * @route   GET /api/auth/sessions
  * @desc    Get all active sessions for the current user
  * @access  Private (requires authentication)
+ * @note    No rate limiting on this endpoint as it's frequently polled by frontend
  */
 router.get('/sessions', authenticate, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -393,12 +403,14 @@ router.delete(
       const currentToken = authHeader?.replace('Bearer ', '');
       console.log('[LOGOUT-ALL] Current token:', currentToken?.substring(0, 30) + '...');
 
+      // Get Socket.io instance
+      const io = req.app.get('io');
+
       // Terminate all sessions except current
-      const count = await terminateAllSessions(authReq.user.userId, currentToken);
+      const count = await terminateAllSessions(authReq.user.userId, currentToken, io);
       console.log('[LOGOUT-ALL] Terminated', count, 'sessions');
 
       // Broadcast force-logout via WebSocket to all user's devices (except current)
-      const io = req.app.get('io') as Server;
       if (io) {
         console.log(
           '[LOGOUT-ALL] Broadcasting with excludeToken:',

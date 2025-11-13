@@ -24,18 +24,22 @@ const getUserOrIpKey = (req: Request): string => {
   return `ip:${req.ip || 'unknown'}`;
 }; /**
  * General API rate limiter
- * Limits: 500 requests per 15 minutes per user/IP
+ * Limits: 1000 requests per 15 minutes per user/IP
  * Uses user ID for authenticated requests, IP for anonymous
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Increased for session polling and normal usage
+  max: 1000, // Increased for session polling and normal usage
   message: 'Too many requests, please try again later.',
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   keyGenerator: getUserOrIpKey, // Use user ID or IP
   skipSuccessfulRequests: true, // Only count failed requests for general limiter
-  validate: { trustProxy: false, xForwardedForHeader: false, keyGeneratorIpFallback: false }, // Skip IPv6 validation
+  skip: (req) => {
+    // Skip rate limiting for session polling endpoints
+    return req.path === '/api/auth/sessions' || req.path === '/api/auth/session';
+  },
+  validate: false, // Disable validation for development
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       key: getUserOrIpKey(req),
@@ -52,17 +56,19 @@ export const apiLimiter = rateLimit({
 
 /**
  * Strict authentication rate limiter for login/signup
- * Limits: 5 requests per 15 minutes per IP
+ * Limits: 100 requests per 15 minutes per IP (increased for development/testing)
  * Uses IP-based limiting to prevent brute force attacks
  * Note: Login attempts should use IP, not user ID (user not authenticated yet)
+ * TODO: Reduce to 5-10 for production
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Strict limit for auth attempts
+  max: 100, // Increased for development - reduce for production!
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false, // Count all auth attempts
+  validate: false, // Disable validation for development
   handler: (req, res) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip,
@@ -90,7 +96,7 @@ export const graphqlLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getUserOrIpKey, // User-based for authenticated requests
   skipSuccessfulRequests: true, // Only count failed/expensive queries
-  validate: { trustProxy: false, xForwardedForHeader: false, keyGeneratorIpFallback: false }, // Skip IPv6 validation
+  validate: false, // Disable validation for development
   handler: (req, res) => {
     logger.warn('GraphQL rate limit exceeded', {
       key: getUserOrIpKey(req),
@@ -123,7 +129,7 @@ export const mutationLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getUserOrIpKey, // User-based for authenticated requests
   skipSuccessfulRequests: false, // Count all mutations
-  validate: { trustProxy: false, xForwardedForHeader: false, keyGeneratorIpFallback: false }, // Skip IPv6 validation
+  validate: false, // Disable validation for development
   handler: (req, res) => {
     logger.warn('Mutation rate limit exceeded', {
       key: getUserOrIpKey(req),
@@ -140,19 +146,20 @@ export const mutationLimiter = rateLimit({
 
 /**
  * Rate limiter for session management operations
- * Limits: 50 requests per 15 minutes per user
+ * Limits: 500 requests per 15 minutes per user (increased for development)
  * More lenient as users may legitimately manage multiple sessions
  * Uses user ID to prevent legitimate users behind shared IPs from affecting each other
+ * TODO: Reduce to 50 for production
  */
 export const sessionLogoutLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Generous limit for session management
+  max: 500, // Increased for development - reduce to 50 for production!
   message: 'Too many session operations, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getUserOrIpKey, // User-based limiting
   skipSuccessfulRequests: false, // Count all operations
-  validate: { trustProxy: false, xForwardedForHeader: false, keyGeneratorIpFallback: false }, // Skip IPv6 validation
+  validate: false, // Disable validation for development
   handler: (req, res) => {
     logger.warn('Session management rate limit exceeded', {
       key: getUserOrIpKey(req),

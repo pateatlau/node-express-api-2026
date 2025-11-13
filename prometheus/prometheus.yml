@@ -1,0 +1,64 @@
+# Prometheus Configuration for Todo API Monitoring
+# Scrapes metrics from all 3 backend instances
+
+global:
+  scrape_interval: 15s # How frequently to scrape targets by default
+  evaluation_interval: 15s # How frequently to evaluate rules
+  external_labels:
+    monitor: 'todo-api-monitor'
+    environment: 'development'
+
+# Alertmanager configuration (optional, for Phase 5.5)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'
+# rule_files:
+#   - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Backend API instances
+  - job_name: 'todo-api'
+    scrape_interval: 10s # Scrape more frequently for API metrics
+    scrape_timeout: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'backend-1:4001'
+          - 'backend-2:4002'
+          - 'backend-3:4003'
+        labels:
+          service: 'todo-api'
+          environment: 'development'
+    # Add instance label based on target address
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: 'backend-(\d+):.*'
+        target_label: instance
+        replacement: 'backend-${1}'
+
+  # PostgreSQL exporter (optional, if added later)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+
+  # MongoDB exporter (optional, if added later)
+  # - job_name: 'mongodb'
+  #   static_configs:
+  #     - targets: ['mongodb-exporter:9216']
+
+  # Caddy exporter (optional, if added later)
+  # - job_name: 'caddy'
+  #   static_configs:
+  #     - targets: ['caddy:2019']

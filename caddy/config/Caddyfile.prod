@@ -1,0 +1,268 @@
+# Production Caddyfile (Automatic HTTPS with Let's Encrypt!)
+# Replace api.yourdomain.com with your actual domain
+
+{
+    # Email for Let's Encrypt notifications (certificate expiry, etc.)
+    email your-email@example.com
+    
+    # Admin API (restricted to localhost for security)
+    admin localhost:2019
+    
+    # Global logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100MB
+            roll_keep 30
+            roll_keep_days 90
+        }
+        format json
+        level INFO
+    }
+    
+    # Automatic HTTPS settings (Caddy handles this automatically!)
+    # - Obtains certificates from Let's Encrypt
+    # - Auto-renews before expiry
+    # - Redirects HTTP to HTTPS
+}
+
+# Production API domain
+# IMPORTANT: Replace with your actual domain!
+api.yourdomain.com {
+    
+    # Site-specific logging
+    log {
+        output file /var/log/caddy/api.log {
+            roll_size 100MB
+            roll_keep 30
+            roll_keep_days 90
+        }
+        format json {
+            time_format "iso8601"
+            level_format "upper"
+        }
+    }
+
+    # ============================================
+    # Caddy Health Check
+    # ============================================
+    handle /caddy-health {
+        respond "Caddy is healthy" 200
+    }
+
+    # ============================================
+    # Backend Health Check
+    # ============================================
+    handle /health {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            lb_policy least_conn
+            
+            # Production health checks (more frequent)
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            health_status 200
+            
+            # Fail fast and recover
+            fail_duration 30s
+            max_fails 3
+            
+            # Timeouts
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 10s
+            }
+        }
+    }
+
+    # ============================================
+    # WebSocket Endpoint (Socket.io)
+    # Sticky sessions required for WebSocket connections
+    # ============================================
+    handle /socket.io/* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # IP hash ensures same client -> same backend
+            lb_policy ip_hash
+            
+            # Health checks
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            health_status 200
+            
+            # Long timeouts for persistent WebSocket connections
+            transport http {
+                dial_timeout 10s
+                read_timeout 7d
+                write_timeout 7d
+                response_header_timeout 30s
+            }
+            
+            # WebSocket headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Port {server_port}
+            
+            # WebSocket upgrade headers
+            header_up Connection {http.request.header.Connection}
+            header_up Upgrade {http.request.header.Upgrade}
+        }
+    }
+
+    # ============================================
+    # REST API Endpoints
+    # ============================================
+    handle /api/* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            # Load balancing
+            lb_policy least_conn
+            
+            # Health checks
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            health_status 200
+            
+            # Fail fast
+            fail_duration 30s
+            max_fails 3
+            
+            # Timeouts
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                read_timeout 60s
+                write_timeout 60s
+            }
+            
+            # Proxy headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Port {server_port}
+        }
+    }
+
+    # ============================================
+    # GraphQL Endpoint
+    # ============================================
+    handle /graphql* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            
+            lb_policy least_conn
+            
+            # Health checks
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            health_status 200
+            
+            # Fail fast
+            fail_duration 30s
+            max_fails 3
+            
+            # GraphQL can have longer queries
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                read_timeout 120s
+                write_timeout 120s
+            }
+            
+            # Proxy headers
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # ============================================
+    # API Documentation
+    # ============================================
+    handle /api-docs* {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            lb_policy least_conn
+            health_uri /health
+            
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # ============================================
+    # Catch-all
+    # ============================================
+    handle {
+        reverse_proxy {
+            to backend-1:4001 backend-2:4002 backend-3:4003
+            lb_policy least_conn
+            health_uri /health
+            
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # ============================================
+    # Response Modifications
+    # ============================================
+    
+    # Compression (zstd is faster than gzip, falls back to gzip)
+    encode zstd gzip
+
+    # Production security headers
+    header {
+        # HSTS - Force HTTPS for 1 year
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        
+        # XSS protection (legacy, but still useful)
+        X-XSS-Protection "1; mode=block"
+        
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Content Security Policy (adjust as needed)
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        
+        # Remove server header (security through obscurity)
+        -Server
+        
+        # Remove X-Powered-By if backend sends it
+        -X-Powered-By
+        
+        # Add custom header to identify proxy
+        X-Proxy "Caddy"
+    }
+}
+
+# HTTP to HTTPS redirect (automatic with Caddy!)
+# This will redirect http://api.yourdomain.com -> https://api.yourdomain.com
+http://api.yourdomain.com {
+    # Caddy automatically redirects to HTTPS
+    # You can customize the redirect if needed:
+    redir https://api.yourdomain.com{uri} permanent
+}

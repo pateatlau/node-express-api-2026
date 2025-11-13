@@ -5,6 +5,8 @@
 
 import { Server, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
 import { verifyAccessToken } from '../lib/jwt.utils.js';
 import { updateLastActivity, getSessionById } from '../services/session.service.js';
 import logger from '../config/logger.js';
@@ -28,7 +30,7 @@ export interface ForceLogoutData {
 /**
  * Initialize WebSocket server
  */
-export function initializeWebSocket(httpServer: HTTPServer): Server {
+export async function initializeWebSocket(httpServer: HTTPServer): Promise<Server> {
   const io = new Server(httpServer, {
     cors: {
       origin: process.env.CLIENT_URL || 'http://localhost:5173',
@@ -39,6 +41,27 @@ export function initializeWebSocket(httpServer: HTTPServer): Server {
     pingInterval: 25000, // 25 seconds
     transports: ['websocket', 'polling'],
   });
+
+  // Setup Redis adapter for cross-instance communication
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    try {
+      const pubClient = createClient({ url: redisUrl });
+      const subClient = pubClient.duplicate();
+
+      await Promise.all([pubClient.connect(), subClient.connect()]);
+
+      io.adapter(createAdapter(pubClient, subClient));
+      logger.info('Socket.IO Redis adapter initialized', { redisUrl });
+    } catch (error) {
+      logger.error('Failed to initialize Redis adapter', { error, redisUrl });
+      logger.warn(
+        'Socket.IO running without Redis adapter - WebSocket broadcasts limited to single instance'
+      );
+    }
+  } else {
+    logger.warn('REDIS_URL not configured - WebSocket broadcasts limited to single instance');
+  }
 
   // Authentication middleware
   io.use(async (socket: AuthSocket, next) => {
@@ -246,10 +269,20 @@ function getDefaultLogoutMessage(reason: ForceLogoutData['reason']): string {
  * Broadcast session list update to all user's devices
  * Use this when a new session is created or a session is deleted
  */
-export function broadcastSessionUpdate(io: Server, userId: string): void {
-  io.to(`user:${userId}`).emit('session-update', {
+export async function broadcastSessionUpdate(io: Server, userId: string): Promise<void> {
+  const room = `user:${userId}`;
+  const socketsInRoom = await io.in(room).fetchSockets();
+
+  logger.info('Broadcasting session update', {
+    userId,
+    room,
+    connectedClients: socketsInRoom.length,
     timestamp: Date.now(),
   });
 
-  logger.info('Session update broadcast sent', { userId });
+  io.to(room).emit('session-update', {
+    timestamp: Date.now(),
+  });
+
+  logger.info('Session update broadcast sent', { userId, connectedClients: socketsInRoom.length });
 }

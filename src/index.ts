@@ -39,7 +39,7 @@ const startServer = async () => {
     }
 
     // Initialize WebSocket server
-    const io = initializeWebSocket(httpServer);
+    const io = await initializeWebSocket(httpServer);
 
     // Make io instance available to routes
     app.set('io', io);

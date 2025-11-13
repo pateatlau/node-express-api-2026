@@ -10,9 +10,7 @@ import { z } from 'zod';
 const envSchema = z
   .object({
     // Node environment
-    NODE_ENV: z
-      .enum(['development', 'production', 'test'])
-      .default('development'),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
     // Server configuration
     PORT: z
@@ -38,10 +36,13 @@ const envSchema = z
     CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
 
     // Logging configuration
-    LOG_LEVEL: z
-      .enum(['error', 'warn', 'info', 'http', 'debug'])
-      .default('info')
-      .optional(),
+    LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info').optional(),
+
+    // Proxy configuration
+    TRUSTED_PROXY: z.string().optional().default('caddy'),
+
+    // Instance identification (for load balancing)
+    INSTANCE_ID: z.string().optional().default('backend-1'),
   })
   .refine(
     (data) => {
@@ -87,9 +88,7 @@ function parseEnv(): Env {
   if (!result.success) {
     console.error('❌ Environment variable validation failed:');
     console.error(JSON.stringify(result.error.format(), null, 2));
-    console.error(
-      '\nPlease check your .env file and ensure all required variables are set.'
-    );
+    console.error('\nPlease check your .env file and ensure all required variables are set.');
     process.exit(1);
   }
 

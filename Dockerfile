@@ -10,6 +10,12 @@ COPY tsconfig.json ./
 # Install dependencies
 RUN npm ci
 
+# Copy Prisma schema
+COPY prisma ./prisma
+
+# Generate Prisma Client
+RUN npx prisma generate
+
 # Copy source code
 COPY src ./src
 
@@ -30,6 +36,12 @@ COPY package*.json ./
 
 # Install production dependencies only
 RUN npm ci --omit=dev
+
+# Copy Prisma schema
+COPY prisma ./prisma
+
+# Generate Prisma Client for production
+RUN npx prisma generate
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
