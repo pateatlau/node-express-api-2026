@@ -1,0 +1,315 @@
+version: '3.8'
+
+services:
+  # =====================
+  # API GATEWAY
+  # =====================
+  api-gateway:
+    image: caddy:2-alpine
+    container_name: api-gateway
+    ports:
+      - '8080:8080' # Main API Gateway
+      - '9090:9090' # Metrics/Monitoring
+    volumes:
+      - ./Caddyfile.microservices:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - microservices
+    depends_on:
+      - backend-1
+      - auth-service
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # =====================
+  # LEGACY BACKEND (3 instances for load balancing)
+  # =====================
+  backend-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-1
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - SERVICE_API_KEY=${SERVICE_API_KEY}
+    networks:
+      - microservices
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:4000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  backend-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-2
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - SERVICE_API_KEY=${SERVICE_API_KEY}
+    networks:
+      - microservices
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:4000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  backend-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-3
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - SERVICE_API_KEY=${SERVICE_API_KEY}
+    networks:
+      - microservices
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:4000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # =====================
+  # AUTH MICROSERVICE
+  # =====================
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: auth-service
+    environment:
+      - NODE_ENV=production
+      - SERVICE_NAME=auth-service
+      - PORT=4001
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - SERVICE_API_KEY=${SERVICE_API_KEY}
+      - LOG_LEVEL=info
+    networks:
+      - microservices
+    depends_on:
+      - postgres-auth
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:4001/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # =====================
+  # AI MICROSERVICE (Future - Week 7-8)
+  # =====================
+  # ai-service:
+  #   build:
+  #     context: .
+  #     dockerfile: services/ai-service/Dockerfile
+  #   container_name: ai-service
+  #   environment:
+  #     - NODE_ENV=production
+  #     - SERVICE_NAME=ai-service
+  #     - PORT=4002
+  #     - DATABASE_URL=${AI_DATABASE_URL}
+  #     - REDIS_URL=redis://redis:6379
+  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #     - SERVICE_API_KEY=${SERVICE_API_KEY}
+  #   networks:
+  #     - microservices
+  #   depends_on:
+  #     - postgres-ai
+  #     - redis
+  #   restart: unless-stopped
+
+  # =====================
+  # DATABASES
+  # =====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-main
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-todo_app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservices
+    ports:
+      - '5432:5432'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: postgres-auth
+    environment:
+      POSTGRES_USER: ${AUTH_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth_service}
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    networks:
+      - microservices
+    ports:
+      - '5433:5432'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # postgres-ai:
+  #   image: postgres:16-alpine
+  #   container_name: postgres-ai
+  #   environment:
+  #     POSTGRES_USER: ${AI_POSTGRES_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${AI_POSTGRES_PASSWORD:-postgres}
+  #     POSTGRES_DB: ${AI_POSTGRES_DB:-ai_service}
+  #   volumes:
+  #     - postgres_ai_data:/var/lib/postgresql/data
+  #   networks:
+  #     - microservices
+  #   ports:
+  #     - '5434:5432'
+  #   restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================
+  # MONITORING STACK
+  # =====================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - microservices
+    ports:
+      - '9091:9090'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - microservices
+    ports:
+      - '3000:3000'
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - microservices
+    ports:
+      - '16686:16686' # Jaeger UI
+      - '14268:14268' # Jaeger collector HTTP
+      - '14250:14250' # Jaeger collector gRPC
+      - '9411:9411' # Zipkin compatible endpoint
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - microservices
+    ports:
+      - '3100:3100'
+    restart: unless-stopped
+
+networks:
+  microservices:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  postgres_auth_data:
+  postgres_ai_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  prometheus_data:
+  grafana_data:
+  loki_data:

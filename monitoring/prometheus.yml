@@ -1,0 +1,62 @@
+# Prometheus configuration for microservices monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'microservices-monitor'
+
+scrape_configs:
+  # API Gateway
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:9090']
+        labels:
+          service: 'api-gateway'
+
+  # Legacy Backend Instances
+  - job_name: 'backend'
+    static_configs:
+      - targets:
+          - 'backend-1:4000'
+          - 'backend-2:4000'
+          - 'backend-3:4000'
+        labels:
+          service: 'backend'
+
+  # Auth Service
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:4001']
+        labels:
+          service: 'auth-service'
+
+  # AI Service (Future)
+  # - job_name: 'ai-service'
+  #   static_configs:
+  #     - targets: ['ai-service:4002']
+  #       labels:
+  #         service: 'ai-service'
+
+  # Todos Service (Future)
+  # - job_name: 'todos-service'
+  #   static_configs:
+  #     - targets: ['todos-service:4003']
+  #       labels:
+  #         service: 'todos-service'
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+        labels:
+          service: 'redis'
+
+  # PostgreSQL Instances
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - 'postgres:5432'
+          - 'postgres-auth:5432'
+        labels:
+          service: 'postgres'

@@ -1,0 +1,153 @@
+# Caddyfile for Microservices API Gateway
+# This routes requests to appropriate microservices
+
+:8080 {
+    # Global settings
+    log {
+        output stdout
+        format json
+    }
+
+    # Enable CORS
+    @cors_preflight {
+        method OPTIONS
+    }
+    handle @cors_preflight {
+        header {
+            Access-Control-Allow-Origin "*"
+            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers "Authorization, Content-Type, X-Service-Key"
+            Access-Control-Max-Age "3600"
+        }
+        respond 204
+    }
+
+    # Health check endpoint for API Gateway
+    handle /health {
+        respond "API Gateway Healthy" 200
+    }
+
+    # Metrics aggregation endpoint
+    handle /metrics {
+        respond "Metrics endpoint - implement aggregation" 200
+    }
+
+    # Auth Service Routes
+    # Route all authentication-related requests to auth-service
+    handle /api/auth/* {
+        reverse_proxy auth-service:4001 {
+            header_up X-Real-IP {remote_host}
+            
+            # Health check for auth-service
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+        }
+    }
+
+    # AI Service Routes (Future - Week 7-8)
+    # Route all AI-related requests to ai-service
+    handle /api/ai/* {
+        reverse_proxy ai-service:4002 {
+            header_up X-Real-IP {remote_host}
+            
+            # Longer timeout for AI requests (30 seconds)
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+            }
+            
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+        }
+    }
+
+    # Todos Service Routes (Future)
+    # Route all todo-related requests to todos-service
+    handle /api/todos/* {
+        reverse_proxy todos-service:4003 {
+            header_up X-Real-IP {remote_host}
+            
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+        }
+    }
+
+    # WebSocket Gateway (Future)
+    # Route WebSocket connections to dedicated gateway
+    handle /socket.io/* {
+        reverse_proxy websocket-gateway:4004 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            
+            # WebSocket upgrade headers
+            header_up Connection {>Connection}
+            header_up Upgrade {>Upgrade}
+        }
+    }
+
+    # Legacy Backend (Fallback)
+    # Route all other /api/* requests to the legacy monolith backend
+    # This ensures backward compatibility during migration
+    handle /api/* {
+        reverse_proxy {
+            to backend-1:4000 backend-2:4000 backend-3:4000
+            
+            # Load balancing strategy
+            lb_policy round_robin
+            lb_try_duration 5s
+            
+            # Health check
+            health_uri /health
+            health_interval 10s
+            health_timeout 5s
+            health_status 2xx
+            
+            # Pass real IP
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+
+    # Default response for unmatched routes
+    handle {
+        respond "API Gateway - Route not found" 404
+    }
+
+    # Global response headers
+    header {
+        # Security headers
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # CORS headers for all responses
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Credentials "true"
+        
+        # Remove server information
+        -Server
+    }
+}
+
+# Metrics and monitoring endpoint (separate port for security)
+:9090 {
+    # Prometheus metrics scraping
+    handle /metrics {
+        reverse_proxy {
+            to auth-service:4001 backend-1:4000 ai-service:4002
+            health_uri /health
+        }
+    }
+    
+    # Internal health checks
+    handle /health/* {
+        reverse_proxy {
+            to auth-service:4001 backend-1:4000 ai-service:4002
+            health_uri /health
+        }
+    }
+}
