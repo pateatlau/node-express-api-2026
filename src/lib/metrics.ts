@@ -235,6 +235,74 @@ export const cacheMisses = new Counter({
 });
 
 // ============================================================================
+// Redis Metrics
+// ============================================================================
+
+export const redisCommands = new Counter({
+  name: 'redis_commands_total',
+  help: 'Total number of Redis commands executed',
+  labelNames: ['command', 'status'], // status: success, failure
+  registers: [register],
+});
+
+export const redisCommandDuration = new Histogram({
+  name: 'redis_command_duration_seconds',
+  help: 'Duration of Redis commands in seconds',
+  labelNames: ['command'],
+  buckets: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1],
+  registers: [register],
+});
+
+export const redisConnections = new Gauge({
+  name: 'redis_connections_active',
+  help: 'Number of active Redis connections',
+  registers: [register],
+});
+
+// ============================================================================
+// HTTP Request Size Metrics
+// ============================================================================
+
+export const httpRequestSize = new Histogram({
+  name: 'http_request_size_bytes',
+  help: 'Size of HTTP requests in bytes',
+  labelNames: ['method', 'route'],
+  buckets: [100, 1000, 5000, 10000, 50000, 100000, 500000],
+  registers: [register],
+});
+
+export const httpResponseSize = new Histogram({
+  name: 'http_response_size_bytes',
+  help: 'Size of HTTP responses in bytes',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [100, 1000, 5000, 10000, 50000, 100000, 500000],
+  registers: [register],
+});
+
+// ============================================================================
+// System Error Metrics
+// ============================================================================
+
+export const systemErrors = new Counter({
+  name: 'system_errors_total',
+  help: 'Total number of system errors',
+  labelNames: ['error_type', 'severity'], // severity: warning, error, critical
+  registers: [register],
+});
+
+export const uncaughtExceptions = new Counter({
+  name: 'uncaught_exceptions_total',
+  help: 'Total number of uncaught exceptions',
+  registers: [register],
+});
+
+export const unhandledRejections = new Counter({
+  name: 'unhandled_rejections_total',
+  help: 'Total number of unhandled promise rejections',
+  registers: [register],
+});
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -309,4 +377,55 @@ export function updateTodoStats(active: number, completed: number) {
  */
 export function updateUsersByRole(role: string, count: number) {
   usersByRole.labels(role).set(count);
+}
+
+/**
+ * Record Redis command
+ */
+export function recordRedisCommand(command: string, durationSeconds: number, success: boolean) {
+  redisCommandDuration.labels(command).observe(durationSeconds);
+  redisCommands.labels(command, success ? 'success' : 'failure').inc();
+}
+
+/**
+ * Record HTTP request/response size
+ */
+export function recordHttpSize(
+  method: string,
+  route: string,
+  requestSize: number,
+  responseSize: number,
+  statusCode: number
+) {
+  if (requestSize > 0) {
+    httpRequestSize.labels(method, route).observe(requestSize);
+  }
+  if (responseSize > 0) {
+    httpResponseSize.labels(method, route, statusCode.toString()).observe(responseSize);
+  }
+}
+
+/**
+ * Record system error
+ */
+export function recordSystemError(errorType: string, severity: 'warning' | 'error' | 'critical') {
+  systemErrors.labels(errorType, severity).inc();
+}
+
+/**
+ * Track WebSocket connection change
+ */
+export function updateWebsocketConnections(change: 1 | -1) {
+  if (change === 1) {
+    websocketConnections.inc();
+  } else {
+    websocketConnections.dec();
+  }
+}
+
+/**
+ * Record WebSocket message
+ */
+export function recordWebsocketMessage(eventType: string, direction: 'sent' | 'received') {
+  websocketMessages.labels(eventType, direction).inc();
 }

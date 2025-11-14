@@ -7,11 +7,27 @@ import { setupGraphQLServer } from './graphql';
 import { initializeWebSocket } from './websocket/index.js';
 import { startSessionCleanup } from './cron/sessionCleanup.js';
 import logger from './config/logger';
+import { recordSystemError, uncaughtExceptions, unhandledRejections } from './lib/metrics';
 
 const PORT = env.PORT;
 
 // Create HTTP server (needed for GraphQL WebSocket support and Socket.io)
 const httpServer = createServer(app);
+
+// Handle uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+  recordSystemError('uncaught_exception', 'critical');
+  uncaughtExceptions.inc();
+  // Give time for metrics to be scraped before exit
+  setTimeout(() => process.exit(1), 1000);
+});
+
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+  logger.error('Unhandled rejection', { reason, promise });
+  recordSystemError('unhandled_rejection', 'error');
+  unhandledRejections.inc();
+});
 
 // Handle graceful shutdown
 const shutdown = async () => {

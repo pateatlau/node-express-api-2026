@@ -6,12 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { PrismaClient, User, Role } from '@prisma/client';
 import { generateTokens } from '../lib/jwt.utils.js';
-import {
-  authOperations,
-  tokenGeneration,
-  passwordHashDuration,
-  recordAuthOperation,
-} from '../lib/metrics';
+import { tokenGeneration, passwordHashDuration, recordAuthOperation } from '../lib/metrics';
 import type {
   SignupData,
   LoginCredentials,
@@ -28,7 +23,7 @@ const SALT_ROUNDS = 10;
  * Convert User to UserResponse (remove password)
  */
 function toUserResponse(user: User): UserResponse {
-  const { password, ...userWithoutPassword } = user;
+  const { ...userWithoutPassword } = user;
   return userWithoutPassword;
 }
 

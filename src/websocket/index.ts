@@ -10,6 +10,12 @@ import { createClient } from 'redis';
 import { verifyAccessToken } from '../lib/jwt.utils.js';
 import { updateLastActivity, getSessionById } from '../services/session.service.js';
 import logger from '../config/logger.js';
+import {
+  updateWebsocketConnections,
+  recordWebsocketMessage,
+  websocketErrors,
+  recordRedisCommand,
+} from '../lib/metrics';
 
 // Extend Socket type with custom properties
 interface AuthSocket extends Socket {
@@ -46,14 +52,17 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl) {
     try {
+      const start = Date.now();
       const pubClient = createClient({ url: redisUrl });
       const subClient = pubClient.duplicate();
 
       await Promise.all([pubClient.connect(), subClient.connect()]);
+      recordRedisCommand('connect', (Date.now() - start) / 1000, true);
 
       io.adapter(createAdapter(pubClient, subClient));
       logger.info('Socket.IO Redis adapter initialized', { redisUrl });
     } catch (error) {
+      recordRedisCommand('connect', 0, false);
       logger.error('Failed to initialize Redis adapter', { error, redisUrl });
       logger.warn(
         'Socket.IO running without Redis adapter - WebSocket broadcasts limited to single instance'
@@ -106,6 +115,9 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
     const userId = socket.userId!;
     const sessionToken = socket.sessionToken!;
 
+    // Track connection
+    updateWebsocketConnections(1);
+
     logger.info('WebSocket client connected', {
       userId,
       socketId: socket.id,
@@ -121,7 +133,9 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
 
     // Handle heartbeat (ping)
     socket.on('ping', () => {
+      recordWebsocketMessage('ping', 'received');
       socket.emit('pong');
+      recordWebsocketMessage('pong', 'sent');
 
       // Update session activity
       updateLastActivity(sessionToken).catch((error) => {
@@ -131,6 +145,7 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
 
     // Handle manual logout all devices
     socket.on('logout-all-devices', () => {
+      recordWebsocketMessage('logout-all-devices', 'received');
       logger.info('Logout all devices requested', { userId });
 
       // Broadcast to all user's connected devices
@@ -139,10 +154,12 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
         message: 'You logged out from all devices',
         timestamp: Date.now(),
       } as ForceLogoutData);
+      recordWebsocketMessage('force-logout', 'sent');
     });
 
     // Handle manual logout specific device
     socket.on('logout-device', async (sessionId: string) => {
+      recordWebsocketMessage('logout-device', 'received');
       logger.info('Logout specific device requested', { userId, sessionId });
 
       // Get session to find which user it belongs to
@@ -157,6 +174,7 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
           timestamp: Date.now(),
           targetSessionId: sessionId,
         } as ForceLogoutData);
+        recordWebsocketMessage('force-logout', 'sent');
 
         logger.info('Force logout broadcast sent for specific session', {
           userId: session.userId,
@@ -169,6 +187,7 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
 
     // Handle disconnection
     socket.on('disconnect', (reason) => {
+      updateWebsocketConnections(-1);
       logger.info('WebSocket client disconnected', {
         userId,
         socketId: socket.id,
@@ -178,6 +197,7 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
 
     // Handle errors
     socket.on('error', (error) => {
+      websocketErrors.labels({ error_type: 'socket_error' }).inc();
       logger.error('WebSocket error', {
         userId,
         socketId: socket.id,

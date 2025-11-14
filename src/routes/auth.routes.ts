@@ -20,7 +20,6 @@ import { signupSchema, loginSchema } from '../schemas/auth.schema.js';
 import { verifyRefreshToken, generateTokens } from '../lib/jwt.utils.js';
 import { getDeviceInfoFromRequest } from '../lib/deviceInfo.utils.js';
 import {
-  broadcastForceLogoutToSession,
   broadcastForceLogout,
   broadcastSessionUpdate,
   type ForceLogoutData,

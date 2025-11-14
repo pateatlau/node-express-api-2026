@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAnyRole } from '../middleware/rbac.middleware.js';
+import type { AuthRequest } from '../types/auth.types.js';
 
 // ID param schema for route validation
 const idParamSchema = z.object({
@@ -53,6 +54,10 @@ router.use(authenticate, requireAnyRole);
  */
 // Get all todos with optional pagination
 router.get('/', validateQuery(TodoQueryParamsSchema), async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const userId = authReq.user?.userId;
+  console.log('[Todos GET] userId:', userId);
+
   const { page = 1, limit = 10 } = req.query as {
     page?: number;
     limit?: number;
@@ -60,8 +65,8 @@ router.get('/', validateQuery(TodoQueryParamsSchema), async (req: Request, res: 
   const skip = (page - 1) * limit;
 
   const [todos, total] = await Promise.all([
-    todoRepository.findAll({ skip, take: limit }),
-    todoRepository.count(),
+    todoRepository.findAll({ skip, take: limit, userId }),
+    todoRepository.count(userId),
   ]);
 
   res.json({
@@ -104,8 +109,12 @@ router.get('/', validateQuery(TodoQueryParamsSchema), async (req: Request, res: 
  */
 // Get a single todo by id
 router.get('/:id', validateParams(idParamSchema), async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const userId = authReq.user?.userId;
   const { id } = req.params;
-  const todo = await todoRepository.findById(id);
+  console.log('[Todos GET by ID] userId:', userId, 'id:', id);
+
+  const todo = await todoRepository.findById(id, userId);
 
   if (!todo) {
     return res.status(404).json({ error: 'Todo not found' });
@@ -142,10 +151,16 @@ router.get('/:id', validateParams(idParamSchema), async (req: Request, res: Resp
  */
 // Create a new todo
 router.post('/', validateBody(CreateTodoInputSchema), async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const userId = authReq.user?.userId;
+  console.log('[Todos POST] userId:', userId);
+
   const { title, completed = false } = req.body;
+
   const todo = await todoRepository.create({
     title,
     completed,
+    userId,
   });
 
   res.status(201).json(todo);
@@ -190,13 +205,21 @@ router.put(
   validateParams(idParamSchema),
   validateBody(UpdateTodoInputSchema),
   async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user?.userId;
     const { id } = req.params;
+    console.log('[Todos PUT] userId:', userId, 'id:', id);
+
     const { title, completed } = req.body;
 
-    const todo = await todoRepository.update(id, {
-      ...(title !== undefined && { title }),
-      ...(completed !== undefined && { completed }),
-    });
+    const todo = await todoRepository.update(
+      id,
+      {
+        ...(title !== undefined && { title }),
+        ...(completed !== undefined && { completed }),
+      },
+      userId
+    );
 
     if (!todo) {
       return res.status(404).json({ error: 'Todo not found' });
@@ -231,8 +254,12 @@ router.put(
  */
 // Delete a todo
 router.delete('/:id', validateParams(idParamSchema), async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const userId = authReq.user?.userId;
   const { id } = req.params;
-  const deleted = await todoRepository.delete(id);
+  console.log('[Todos DELETE] userId:', userId, 'id:', id);
+
+  const deleted = await todoRepository.delete(id, userId);
 
   if (!deleted) {
     return res.status(404).json({ error: 'Todo not found' });

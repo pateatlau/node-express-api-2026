@@ -4,11 +4,12 @@ import {
   httpRequestTotal,
   httpActiveRequests,
   httpRequestErrors,
+  recordHttpSize,
 } from '../lib/metrics';
 
 /**
  * Middleware to track HTTP request metrics
- * Records duration, count, status codes, and active requests
+ * Records duration, count, status codes, request/response sizes, and active requests
  */
 export function metricsMiddleware(req: Request, res: Response, next: NextFunction) {
   // Start timer
@@ -24,6 +25,32 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
   // Normalize route for metrics (replace IDs with placeholders)
   route = normalizeRoute(route);
 
+  // Track request size
+  const requestSize = parseInt(req.headers['content-length'] || '0', 10);
+
+  // Variable to track response size
+  let responseSize = 0;
+
+  // Intercept response to track size
+  const originalSend = res.send;
+  const originalJson = res.json;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  res.send = function (data: any): Response {
+    if (data) {
+      responseSize = Buffer.byteLength(typeof data === 'string' ? data : JSON.stringify(data));
+    }
+    return originalSend.call(this, data);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  res.json = function (data: any): Response {
+    if (data) {
+      responseSize = Buffer.byteLength(JSON.stringify(data));
+    }
+    return originalJson.call(this, data);
+  };
+
   // Hook into response finish event
   res.on('finish', () => {
     // Calculate duration in seconds
@@ -32,7 +59,10 @@ export function metricsMiddleware(req: Request, res: Response, next: NextFunctio
 
     // Record metrics
     httpRequestDuration.labels(method, route, statusCode).observe(durationSeconds);
-    httpRequestTotal.labels(method, route, statusCode).inc();
+    httpRequestTotal.labels(method, route, statusCode).inc(); // Record request/response sizes
+    if (requestSize > 0 || responseSize > 0) {
+      recordHttpSize(method, route, requestSize, responseSize, res.statusCode);
+    }
 
     // Decrement active requests
     httpActiveRequests.labels(method).dec();

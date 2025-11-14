@@ -6,6 +6,7 @@ export interface TodoDTO {
   id: string;
   title: string;
   completed: boolean;
+  userId?: string; // Optional for backward compatibility
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,7 @@ export interface TodoDTO {
 export interface CreateTodoDTO {
   title: string;
   completed?: boolean;
+  userId?: string; // Optional user association
 }
 
 /**
@@ -32,6 +34,7 @@ export interface UpdateTodoDTO {
 export interface PaginationParams {
   skip: number;
   take: number;
+  userId?: string; // Optional user filter
 }
 
 /**
@@ -40,16 +43,17 @@ export interface PaginationParams {
  */
 export interface ITodoRepository {
   /**
-   * Find all todos with pagination
-   * @param params - Pagination parameters (skip, take)
+   * Find all todos with pagination and optional user filter
+   * @param params - Pagination parameters (skip, take) and optional userId
    */
   findAll(params: PaginationParams): Promise<TodoDTO[]>;
 
   /**
    * Find a todo by ID
    * @param id - Todo ID
+   * @param userId - Optional userId to verify ownership
    */
-  findById(id: string): Promise<TodoDTO | null>;
+  findById(id: string, userId?: string): Promise<TodoDTO | null>;
 
   /**
    * Create a new todo
@@ -61,17 +65,20 @@ export interface ITodoRepository {
    * Update a todo
    * @param id - Todo ID
    * @param data - Todo update data
+   * @param userId - Optional userId to verify ownership
    */
-  update(id: string, data: UpdateTodoDTO): Promise<TodoDTO | null>;
+  update(id: string, data: UpdateTodoDTO, userId?: string): Promise<TodoDTO | null>;
 
   /**
    * Delete a todo
    * @param id - Todo ID
+   * @param userId - Optional userId to verify ownership
    */
-  delete(id: string): Promise<boolean>;
+  delete(id: string, userId?: string): Promise<boolean>;
 
   /**
    * Count total todos (useful for pagination)
+   * @param userId - Optional userId to count only user's todos
    */
-  count(): Promise<number>;
+  count(userId?: string): Promise<number>;
 }

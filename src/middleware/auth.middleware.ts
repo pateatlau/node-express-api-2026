@@ -6,7 +6,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../lib/jwt.utils.js';
 import { getUserById, updateLastActivity } from '../services/auth.service.js';
-import { isSessionExpired } from '../services/session.service.js';
+import {
+  isSessionExpired,
+  updateLastActivity as updateSessionActivity,
+} from '../services/session.service.js';
 import type { AuthRequest } from '../types/auth.types.js';
 
 /**
@@ -52,8 +55,9 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    // Update last activity
+    // Update last activity in both User and Session tables
     await updateLastActivity(decoded.userId);
+    await updateSessionActivity(token); // Update Session.lastActivity
 
     // Attach user info to request
     (req as AuthRequest).user = {
@@ -105,13 +109,14 @@ export async function optionalAuthenticate(
           role: decoded.role,
         };
 
-        // Update last activity
+        // Update last activity in both User and Session tables
         await updateLastActivity(decoded.userId);
+        await updateSessionActivity(token); // Update Session.lastActivity
       }
     }
 
     next();
-  } catch (error) {
+  } catch {
     // Token invalid, but continue without authentication
     next();
   }

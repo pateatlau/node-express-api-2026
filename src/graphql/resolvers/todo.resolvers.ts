@@ -5,10 +5,7 @@ import {
   publishTodoDeleted,
   TODO_EVENTS,
 } from '../pubsub.js';
-import type {
-  CreateTodoDTO,
-  UpdateTodoDTO,
-} from '../../repositories/TodoRepository.interface.js';
+import type { CreateTodoDTO, UpdateTodoDTO } from '../../repositories/TodoRepository.interface.js';
 
 /**
  * GraphQL Input Types (matching schema)
@@ -51,28 +48,30 @@ const Query = {
     data: unknown[];
     meta: { total: number; page: number; limit: number; totalPages: number };
   }> {
+    // ...existing code...
     const page = args.page || 1;
     const limit = Math.min(args.limit || 20, 100); // Max 100 items per page
     const skip = (page - 1) * limit;
 
-    // Fetch all todos first (for filtering)
+    // Only fetch todos for the authenticated user
+    const userId = context.user?.userId;
+    console.log('[GraphQL Todos Resolver] userId:', userId);
     let allTodos = await context.todoRepository.findAll({
       skip: 0,
       take: 1000,
+      userId,
     });
+    // Exclude todos without a userId (legacy/orphan todos)
+    allTodos = allTodos.filter((todo) => !!todo.userId);
 
     // Apply filters if provided
     if (args.filter) {
       if (args.filter.completed !== undefined) {
-        allTodos = allTodos.filter(
-          (todo) => todo.completed === args.filter!.completed
-        );
+        allTodos = allTodos.filter((todo) => todo.completed === args.filter!.completed);
       }
       if (args.filter.titleContains) {
         const searchTerm = args.filter.titleContains.toLowerCase();
-        allTodos = allTodos.filter((todo) =>
-          todo.title.toLowerCase().includes(searchTerm)
-        );
+        allTodos = allTodos.filter((todo) => todo.title.toLowerCase().includes(searchTerm));
       }
     }
 
@@ -117,11 +116,7 @@ const Query = {
   /**
    * Get a single todo by ID (uses DataLoader for caching)
    */
-  async todo(
-    _parent: unknown,
-    args: { id: string },
-    context: GraphQLContext
-  ): Promise<unknown> {
+  async todo(_parent: unknown, args: { id: string }, context: GraphQLContext): Promise<unknown> {
     // Use DataLoader for automatic batching and caching
     return context.todoLoader.load(args.id);
   },
@@ -158,6 +153,7 @@ const Mutation = {
     const todoData: CreateTodoDTO = {
       title: args.input.title,
       completed: args.input.completed ?? false,
+      userId: context.user?.userId,
     };
 
     const newTodo = await context.todoRepository.create(todoData);
@@ -181,12 +177,12 @@ const Mutation = {
   ): Promise<unknown> {
     const updateData: UpdateTodoDTO = {};
     if (args.input.title !== undefined) updateData.title = args.input.title;
-    if (args.input.completed !== undefined)
-      updateData.completed = args.input.completed;
+    if (args.input.completed !== undefined) updateData.completed = args.input.completed;
 
     const updatedTodo = await context.todoRepository.update(
       args.id,
-      updateData
+      updateData,
+      context.user?.userId
     );
 
     if (updatedTodo) {
@@ -210,7 +206,7 @@ const Mutation = {
     args: { id: string },
     context: GraphQLContext
   ): Promise<boolean> {
-    const deleted = await context.todoRepository.delete(args.id);
+    const deleted = await context.todoRepository.delete(args.id, context.user?.userId);
 
     if (deleted) {
       // Clear DataLoader cache

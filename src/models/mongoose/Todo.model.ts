@@ -7,6 +7,7 @@ export interface ITodo extends Document {
   _id: mongoose.Types.ObjectId;
   title: string;
   completed: boolean;
+  userId?: string; // Optional - for user-specific todos
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +27,11 @@ const TodoSchema = new Schema<ITodo>(
       type: Boolean,
       default: false,
     },
+    userId: {
+      type: String,
+      required: false,
+      ref: 'User',
+    },
   },
   {
     timestamps: true, // Automatically adds createdAt and updatedAt
@@ -36,6 +42,7 @@ const TodoSchema = new Schema<ITodo>(
 // Add indexes for performance
 TodoSchema.index({ completed: 1 });
 TodoSchema.index({ createdAt: -1 });
+TodoSchema.index({ userId: 1 });
 
 /**
  * Todo Model

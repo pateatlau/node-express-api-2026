@@ -14,11 +14,15 @@ model Todo {
   id        String   @id @default(uuid())
   title     String
   completed Boolean  @default(false)
+  userId    String?  // Optional - for user-specific todos
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([completed])
   @@index([createdAt])
+  @@index([userId])
 }
 
 model User {
@@ -31,6 +35,7 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   sessions       Session[]
+  todos          Todo[]    // User's todos
 
   @@index([email])
   @@index([role])

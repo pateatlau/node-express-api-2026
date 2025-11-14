@@ -70,7 +70,7 @@ export function verifyAccessToken(token: string): JwtPayload {
     }
 
     return decoded;
-  } catch (error) {
+  } catch {
     throw new Error('Invalid or expired access token');
   }
 }
@@ -87,7 +87,7 @@ export function verifyRefreshToken(token: string): JwtPayload {
     }
 
     return decoded;
-  } catch (error) {
+  } catch {
     throw new Error('Invalid or expired refresh token');
   }
 }
@@ -98,7 +98,7 @@ export function verifyRefreshToken(token: string): JwtPayload {
 export function decodeToken(token: string): JwtPayload | null {
   try {
     return jwt.decode(token) as JwtPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
