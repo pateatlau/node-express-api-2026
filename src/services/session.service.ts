@@ -75,6 +75,23 @@ export async function createSession(
       await prisma.session.delete({
         where: { id: oldestSession.id },
       });
+
+      // Broadcast session update for auto-deleted session
+      if (io) {
+        try {
+          broadcastSessionUpdate(io, userId);
+          logger.info('[SESSION AUTO-DELETED - MAX LIMIT]', {
+            deletedSessionId: oldestSession.id,
+            userId,
+          });
+        } catch (error) {
+          logger.error('[SESSION AUTO-DELETE - BROADCAST FAILED]', {
+            error,
+            deletedSessionId: oldestSession.id,
+            userId,
+          });
+        }
+      }
     }
   }
 
@@ -90,9 +107,27 @@ export async function createSession(
     },
   });
 
+  logger.info('[SESSION CREATED]', {
+    sessionId: session.id,
+    userId,
+    willBroadcast: !!io,
+  });
+
   // Broadcast session update to all user's devices
   if (io) {
-    broadcastSessionUpdate(io, userId);
+    try {
+      broadcastSessionUpdate(io, userId);
+      logger.info('[SESSION CREATED - BROADCAST SENT]', { userId, sessionId: session.id });
+    } catch (error) {
+      logger.error('[SESSION CREATED - BROADCAST FAILED]', {
+        error,
+        userId,
+        sessionId: session.id,
+      });
+      // Don't throw - session creation succeeded, broadcast is best-effort
+    }
+  } else {
+    logger.warn('[SESSION CREATED - NO IO, SKIPPING BROADCAST]', { userId, sessionId: session.id });
   }
 
   return session;
@@ -135,9 +170,33 @@ export async function terminateSession(sessionId: string, io?: Server): Promise<
       where: { id: sessionId },
     });
 
+    logger.info('[SESSION TERMINATED]', {
+      sessionId: session.id,
+      userId: session.userId,
+      willBroadcast: !!io,
+    });
+
     // Broadcast session update to all user's devices
     if (io && session) {
-      broadcastSessionUpdate(io, session.userId);
+      try {
+        broadcastSessionUpdate(io, session.userId);
+        logger.info('[SESSION TERMINATED - BROADCAST SENT]', {
+          userId: session.userId,
+          sessionId: session.id,
+        });
+      } catch (error) {
+        logger.error('[SESSION TERMINATED - BROADCAST FAILED]', {
+          error,
+          userId: session.userId,
+          sessionId: session.id,
+        });
+        // Don't throw - session termination succeeded, broadcast is best-effort
+      }
+    } else {
+      logger.warn('[SESSION TERMINATED - NO IO, SKIPPING BROADCAST]', {
+        userId: session.userId,
+        sessionId: session.id,
+      });
     }
 
     return session;
@@ -168,7 +227,16 @@ export async function terminateAllSessions(
 
   // Broadcast session update to all user's devices
   if (io && result.count > 0) {
-    broadcastSessionUpdate(io, userId);
+    try {
+      broadcastSessionUpdate(io, userId);
+    } catch (error) {
+      logger.error('[BULK TERMINATE - BROADCAST FAILED]', {
+        error,
+        userId,
+        count: result.count,
+      });
+      // Don't throw - sessions terminated, broadcast is best-effort
+    }
   }
 
   return result.count;
@@ -243,7 +311,7 @@ export async function getSessionById(sessionId: string): Promise<Session | null>
  * Clean up expired sessions
  * Returns array of expired sessions (for notifying users)
  */
-export async function cleanupExpiredSessions(): Promise<Session[]> {
+export async function cleanupExpiredSessions(io?: Server): Promise<Session[]> {
   const now = new Date();
 
   // Find expired sessions
@@ -264,6 +332,22 @@ export async function cleanupExpiredSessions(): Promise<Session[]> {
         },
       },
     });
+
+    // Broadcast session update to all affected users
+    if (io) {
+      const affectedUsers = new Set(expiredSessions.map((s) => s.userId));
+      affectedUsers.forEach((userId) => {
+        try {
+          broadcastSessionUpdate(io, userId);
+        } catch (error) {
+          logger.error('[CLEANUP EXPIRED - BROADCAST FAILED]', {
+            error,
+            userId,
+          });
+          // Continue with other users
+        }
+      });
+    }
   }
 
   return expiredSessions;
@@ -282,13 +366,29 @@ export async function isSessionExpired(userId: string): Promise<boolean> {
   });
 
   if (!user || !user.lastActivityAt) {
+    logger.warn('[SESSION CHECK - NO ACTIVITY RECORD]', {
+      userId,
+      hasUser: !!user,
+    });
     return true; // No activity record means session expired
   }
 
   const now = new Date();
   const timeSinceLastActivity = now.getTime() - user.lastActivityAt.getTime();
+  const timeoutMs = SESSION_TIMEOUT_MS;
+  const isExpired = timeSinceLastActivity > SESSION_TIMEOUT_MS;
 
-  return timeSinceLastActivity > SESSION_TIMEOUT_MS;
+  logger.info('[SESSION CHECK]', {
+    userId,
+    lastActivityAt: user.lastActivityAt.toISOString(),
+    timeSinceLastActivityMs: timeSinceLastActivity,
+    timeSinceLastActivitySeconds: Math.floor(timeSinceLastActivity / 1000),
+    timeoutMs,
+    timeoutMinutes: SESSION_TIMEOUT_MINUTES,
+    isExpired,
+  });
+
+  return isExpired;
 }
 
 /**

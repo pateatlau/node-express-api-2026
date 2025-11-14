@@ -78,16 +78,13 @@ http://localhost:8080 {
             health_timeout 5s
             health_status 200
             
-            # WebSocket-specific headers
+            # Proxy headers
             header_up Host {host}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             
-            # Connection upgrade headers (required for WebSocket)
-            header_up Connection {http.request.header.Connection}
-            header_up Upgrade {http.request.header.Upgrade}
+            # Allow WebSocket upgrade - do NOT override these headers
+            # Caddy automatically forwards Connection and Upgrade headers
         }
     }
 

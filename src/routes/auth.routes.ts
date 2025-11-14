@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import { signup, login, getUserById, refreshAccessToken } from '../services/auth.service.js';
+import { SESSION_TIMEOUT_MS } from '../services/session.service.js';
 import {
   getSessionInfo,
   createSession,
@@ -28,6 +29,29 @@ import type { Server } from 'socket.io';
 import type { AuthRequest } from '../types/auth.types.js';
 
 const router = Router();
+
+/**
+ * @route   GET /api/auth/config
+ * @desc    Get public auth configuration (session timeout, etc.)
+ * @access  Public
+ */
+router.get('/config', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionTimeoutMs: SESSION_TIMEOUT_MS,
+        sessionTimeoutMinutes: Math.floor(SESSION_TIMEOUT_MS / 60000),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get config',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
 
 /**
  * @route   POST /api/auth/signup
@@ -478,11 +502,13 @@ router.delete(
         return;
       }
 
-      // Terminate the session
-      await terminateSession(id);
+      // Get Socket.io instance
+      const io = req.app.get('io') as Server;
+
+      // Terminate the session (this will broadcast session-update via terminateSession)
+      await terminateSession(id, io);
 
       // Broadcast force-logout via WebSocket
-      const io = req.app.get('io') as Server;
       console.log('[DEBUG] IO object exists:', !!io, 'Session ID:', id);
       if (io) {
         console.log('[DEBUG] Calling broadcastForceLogoutToSession...');
@@ -496,8 +522,7 @@ router.delete(
         io.to(`user:${session.userId}`).emit('force-logout', data);
         console.log('[DEBUG] Broadcast completed to user:', session.userId);
 
-        // Also broadcast session list update to refresh the list on other devices
-        broadcastSessionUpdate(io, session.userId);
+        // Note: terminateSession already broadcasts session-update, no need to duplicate
       } else {
         console.error('[ERROR] IO object not found on app');
       }

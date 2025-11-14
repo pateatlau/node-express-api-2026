@@ -22,8 +22,8 @@ export function startSessionCleanup(io: Server): void {
     try {
       logger.info('Running session cleanup job');
 
-      // Clean up expired sessions
-      const expiredSessions = await cleanupExpiredSessions();
+      // Clean up expired sessions and broadcast updates
+      const expiredSessions = await cleanupExpiredSessions(io);
 
       if (expiredSessions.length > 0) {
         logger.info('Expired sessions cleaned up', {

@@ -8,7 +8,7 @@ import { Server as HTTPServer } from 'http';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { verifyAccessToken } from '../lib/jwt.utils.js';
-import { updateLastActivity, getSessionById } from '../services/session.service.js';
+import { getSessionById } from '../services/session.service.js';
 import logger from '../config/logger.js';
 import {
   updateWebsocketConnections,
@@ -113,7 +113,6 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
   // Connection handler
   io.on('connection', (socket: AuthSocket) => {
     const userId = socket.userId!;
-    const sessionToken = socket.sessionToken!;
 
     // Track connection
     updateWebsocketConnections(1);
@@ -126,10 +125,8 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
     // Join user-specific room (for broadcasting to all user's devices)
     socket.join(`user:${userId}`);
 
-    // Update session activity on connection
-    updateLastActivity(sessionToken).catch((error) => {
-      logger.error('Failed to update session activity on connection', { error });
-    });
+    // NOTE: We do NOT update session activity on connection
+    // WebSocket connection is for real-time updates, not user activity tracking
 
     // Handle heartbeat (ping)
     socket.on('ping', () => {
@@ -137,10 +134,8 @@ export async function initializeWebSocket(httpServer: HTTPServer): Promise<Serve
       socket.emit('pong');
       recordWebsocketMessage('pong', 'sent');
 
-      // Update session activity
-      updateLastActivity(sessionToken).catch((error) => {
-        logger.error('Failed to update session activity on ping', { error });
-      });
+      // NOTE: We do NOT update session activity on ping
+      // Heartbeat is for keeping WebSocket alive, not tracking user activity
     });
 
     // Handle manual logout all devices
