@@ -40,6 +40,24 @@ http://localhost:8080 {
     }
 
     # ============================================
+    # CORS Preflight Handler (OPTIONS requests)
+    # ============================================
+    @options {
+        method OPTIONS
+    }
+    
+    handle @options {
+        header {
+            Access-Control-Allow-Origin "*"
+            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
+            Access-Control-Allow-Credentials "true"
+            Access-Control-Max-Age "3600"
+        }
+        respond 204
+    }
+
+    # ============================================
     # Backend Health Check (no caching, no sticky sessions)
     # ============================================
     handle /health {
@@ -148,6 +166,34 @@ http://localhost:8080 {
     }
 
     # ============================================
+    # Auth Service (Microservice - Phase 2)
+    # NOTE: Commented out - using legacy auth in backend instances
+    # ============================================
+    # handle /api/auth/* {
+    #     reverse_proxy {
+    #         to auth-service:4001
+    #         
+    #         # Health checks
+    #         health_uri /health
+    #         health_interval 10s
+    #         health_timeout 5s
+    #         health_status 200
+    #         
+    #         # Fail fast
+    #         fail_duration 30s
+    #         max_fails 3
+    #         
+    #         # Proxy headers
+    #         header_up Host {host}
+    #         header_up X-Real-IP {remote_host}
+    #         header_up X-Forwarded-For {remote_host}
+    #         header_up X-Forwarded-Proto {scheme}
+    #         header_up X-Forwarded-Host {host}
+    #         header_up X-Forwarded-Port {server_port}
+    #     }
+    # }
+
+    # ============================================
     # API Documentation (Swagger)
     # ============================================
     handle /api-docs* {
@@ -188,6 +234,12 @@ http://localhost:8080 {
 
     # Security headers (basic for development)
     header {
+        # CORS headers for all responses
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
+        Access-Control-Allow-Credentials "true"
+        
         # Prevent MIME type sniffing
         X-Content-Type-Options "nosniff"
         

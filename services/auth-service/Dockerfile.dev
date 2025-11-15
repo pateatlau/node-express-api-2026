@@ -1,0 +1,25 @@
+# Auth Service Development Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY services/auth-service/package*.json ./
+RUN npm install
+
+# Copy Prisma schema
+COPY services/auth-service/prisma ./prisma/
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy source code
+COPY services/auth-service/src ./src/
+COPY services/auth-service/tsconfig.json ./
+COPY services/auth-service/.env ./.env
+
+# Expose port
+EXPOSE 4001
+
+# Development mode with hot reload
+CMD ["npm", "run", "dev"]

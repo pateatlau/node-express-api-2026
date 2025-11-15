@@ -1,0 +1,12 @@
+
+> auth-service@1.0.0 dev
+> tsx watch src/index.ts
+
+[CLEANUP] Starting expired session cleanup...
+🚀 auth-service listening on port 4001
+📊 Health check: http://localhost:4001/health
+📈 Metrics: http://localhost:4001/metrics
+🔐 Environment: development
+[REDIS PUBLISHER] Connected successfully
+prisma:query DELETE FROM "public"."sessions" WHERE "public"."sessions"."expiresAt" < $1
+[CLEANUP] Completed. Deleted 0 sessions.

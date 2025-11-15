@@ -1,0 +1,133 @@
+// This is your Prisma schema file for User Profile Service
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model UserProfile {
+  id              String    @id @default(uuid())
+  userId          String    @unique // References auth-service User.id
+  
+  // Basic Profile Info
+  displayName     String?
+  bio             String?   @db.Text
+  location        String?
+  website         String?
+  company         String?
+  jobTitle        String?
+  
+  // Avatar & Banner
+  avatarUrl       String?
+  bannerUrl       String?
+  
+  // Social Links
+  twitterHandle   String?
+  githubUsername  String?
+  linkedinUrl     String?
+  
+  // Profile Visibility
+  isPublic        Boolean   @default(true)
+  showEmail       Boolean   @default(false)
+  showLocation    Boolean   @default(true)
+  
+  // Analytics
+  profileViews    Int       @default(0)
+  lastViewedAt    DateTime?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  preferences     UserPreferences?
+  activityLog     ProfileActivity[]
+  
+  @@index([userId])
+  @@map("user_profiles")
+}
+
+model UserPreferences {
+  id              String    @id @default(uuid())
+  profileId       String    @unique
+  
+  // UI Preferences
+  theme           Theme     @default(SYSTEM)
+  language        String    @default("en")
+  timezone        String    @default("UTC")
+  dateFormat      String    @default("MM/DD/YYYY")
+  timeFormat      TimeFormat @default(HOURS_12)
+  
+  // Notification Preferences
+  emailNotifications      Boolean @default(true)
+  pushNotifications       Boolean @default(true)
+  desktopNotifications    Boolean @default(false)
+  weeklyDigest            Boolean @default(true)
+  
+  // Feature Preferences
+  showTutorials           Boolean @default(true)
+  enableAnimations        Boolean @default(true)
+  compactView             Boolean @default(false)
+  
+  // Privacy Settings
+  allowAnalytics          Boolean @default(true)
+  allowMarketing          Boolean @default(false)
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@index([profileId])
+  @@map("user_preferences")
+}
+
+model ProfileActivity {
+  id              String    @id @default(uuid())
+  profileId       String
+  
+  // Activity Details
+  activityType    ActivityType
+  description     String
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@index([profileId])
+  @@index([createdAt])
+  @@map("profile_activities")
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum TimeFormat {
+  HOURS_12
+  HOURS_24
+}
+
+enum ActivityType {
+  PROFILE_CREATED
+  PROFILE_UPDATED
+  AVATAR_CHANGED
+  BANNER_CHANGED
+  PREFERENCES_UPDATED
+  PROFILE_VIEWED
+  SOCIAL_LINK_ADDED
+  SOCIAL_LINK_REMOVED
+}

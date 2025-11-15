@@ -1,0 +1,64 @@
+services:
+  postgres-profile:
+    image: postgres:16-alpine
+    container_name: postgres-profile
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: profile_db
+    ports:
+      - '5434:5432'
+    volumes:
+      - profile-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d profile_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - caddy-network
+
+  user-profile-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: user-profile-service
+    ports:
+      - '4002:4002'
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - SERVICE_NAME=user-profile-service
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-profile:5432/profile_db?schema=public
+      - REDIS_URL=redis://redis-caddy:6379
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - CORS_ORIGIN=http://localhost:8080
+      - UPLOAD_DIR=./uploads
+      - ENABLE_CACHE=true
+    volumes:
+      - profile-uploads:/app/uploads
+    depends_on:
+      postgres-profile:
+        condition: service_healthy
+      redis-caddy:
+        condition: service_started
+    networks:
+      - caddy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:4002/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  profile-pg-data:
+    driver: local
+  profile-uploads:
+    driver: local
+
+networks:
+  caddy-network:
+    external: true
